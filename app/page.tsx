@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
+import MonthlyProductionChart from './components/MonthlyProductionChart'; // Import the new component
 
 // Dynamically import the Map component to avoid SSR issues with Leaflet
 const FactoryMap = dynamic(() => import('./components/FactoryMap'), {
@@ -51,11 +52,22 @@ interface ApiResponse {
   factory_data: Factory[];
 }
 
+interface ChartData {
+  labels: string[];
+  datasets: {
+    label: string;
+    data: number[];
+    backgroundColor: string;
+  }[];
+}
+
 export default function Home() {
   const [factories, setFactories] = useState<Factory[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [monthlyProductionData, setMonthlyProductionData] = useState<ChartData | null>(null); // New state for chart data
+
 
   useEffect(() => {
     const loadFactoryData = async () => {
@@ -63,6 +75,11 @@ export default function Home() {
         // Import the local JSON data
         const factoryData = await import('./data/factories.json');
         setFactories(factoryData.factory_data);
+
+        // Process data for the monthly production chart
+        const aggregatedData = aggregateMonthlyProduction(factoryData.factory_data);
+        setMonthlyProductionData(aggregatedData);
+
       } catch (err) {
         console.error('Failed to load factory data:', err);
         setError('Failed to load factory data');
@@ -73,6 +90,36 @@ export default function Home() {
 
     loadFactoryData();
   }, []);
+
+  // Function to aggregate monthly production across all factories
+  const aggregateMonthlyProduction = (factories: Factory[]): ChartData => {
+    const months = [
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December"
+    ];
+    const monthlyTotals: { [key: string]: number } = {};
+
+    months.forEach(month => {
+      monthlyTotals[month] = 0;
+    });
+
+    factories.forEach(factory => {
+      factory.production_level_2024?.forEach(production => {
+        monthlyTotals[production.month] += production.value;
+      });
+    });
+
+    return {
+      labels: months,
+      datasets: [
+        {
+          label: 'Total Production (tons)',
+          data: months.map(month => monthlyTotals[month]),
+          backgroundColor: 'rgba(255, 159, 64, 0.6)', // Orange color for bars
+        },
+      ],
+    };
+  };
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -137,6 +184,29 @@ export default function Home() {
         
         {!loading && factories.length > 0 && (
           <FactoryMap factories={factories} />
+        )}
+      </div>
+
+      {/* Monthly Performance Section */}
+      <div className="bg-yellow-100 py-4 px-4 text-center border-b-2 border-yellow-200 mt-8">
+        <h2 className="text-xl sm:text-2xl font-semibold text-black">
+          Monthly Performance
+        </h2>
+      </div>
+
+      <div className="p-4 bg-white rounded-lg shadow-lg m-4">
+        {loading && (
+          <div className="h-96 bg-gray-100 animate-pulse rounded-lg flex items-center justify-center">
+            <span className="text-gray-500">Loading chart data...</span>
+          </div>
+        )}
+        {error && (
+          <div className="h-96 bg-red-50 rounded-lg flex items-center justify-center">
+            <span className="text-red-600">Error loading chart: {error}</span>
+          </div>
+        )}
+        {!loading && monthlyProductionData && (
+          <MonthlyProductionChart data={monthlyProductionData} />
         )}
       </div>
 
